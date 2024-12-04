@@ -1,0 +1,12 @@
+dataset:
+  type: ST2D
+  h5ad_file: data/preprocessed_data/resampled-E13.5_E1S1.MOSTA.h5ad
+  val_proportion: 
+  keep_ratio: True
+  val_h5ad_file: data/preprocessed_data/E13.5_E1S1.MOSTA.h5ad
+
+pipeline:
+  optimization:
+    seed: 8848
+  
+  interp_method: nearest

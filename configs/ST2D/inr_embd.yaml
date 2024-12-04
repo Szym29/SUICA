@@ -1,0 +1,32 @@
+case: 11.5
+
+dataset:
+  type: ST2D
+  data_file: logs/GAE/${case}/lightning_logs/version_0/embedded-all.h5ad
+  val_proportion: 0.2
+  keep_ratio: True
+  require_coordnorm: False
+
+pipeline:
+  target: embeddings
+
+  inr:
+    model: FFN
+    num_hidden_layers: 3
+    num_hidden_features: 2048 
+    phase: 1000
+    decoder:
+      ckpt: logs/GAE/${case}/lightning_logs/version_0/checkpoints/last.ckpt
+      recon_loss: True
+      finetune: True
+      
+  optimization:
+    seed: 8848
+    epochs: 2000
+    lr: 1e-4
+    val_freq: 100
+    logs: logs/GAE+FFN/${case}
+    batch_size: 8192
+  
+  predict_mode: val
+  reconstructed_data: reconstructed-val.h5ad

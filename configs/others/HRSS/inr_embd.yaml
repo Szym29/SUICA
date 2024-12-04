@@ -1,0 +1,29 @@
+dataset:
+  type: HRSS
+  data_file: logs/ae_Cuprite/lightning_logs/version_0/embedded-Cuprite.npz
+  val_proportion: 0.2
+  keep_ratio: True
+  val_file:
+
+pipeline:
+  target: embeddings
+
+  inr:
+    model: FFN
+    num_hidden_layers: 12
+    num_hidden_features: 2048 
+    decoder:
+      ckpt: logs/ae_Cuprite/lightning_logs/version_0/checkpoints/last.ckpt
+      recon_loss: True
+      finetune: True
+      
+  optimization:
+    seed: 8848
+    epochs: 2000
+    lr: 1e-5
+    val_freq: 100
+    logs: logs/inr_embd_Salinas
+    batch_size: 8192
+  
+  predict_mode: 
+  reconstructed_data: 

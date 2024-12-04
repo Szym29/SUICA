@@ -1,0 +1,13 @@
+case: merfish
+
+dataset:
+  type: ST3D
+  data_file: data/datasets/data_SUICA/ST3D/${case}.h5ad
+  val_proportion: 0.2
+  keep_ratio: True
+
+pipeline:
+  optimization:
+    seed: 8848
+  
+  interp_method: nearest

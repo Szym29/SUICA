@@ -1,0 +1,23 @@
+dataset:
+  type: ST2D
+  h5ad_file: data/preprocessed_data/resampled-E9.5_E1S1.MOSTA.h5ad
+  val_proportion: 
+  keep_ratio: True
+  val_h5ad_file: data/preprocessed_data/E9.5_E1S1.MOSTA.h5ad
+
+pipeline:
+  embedder:
+    model: AE
+    dim_hidden: [2048, 512, 64]
+    dim_latent: 32
+
+  optimization:
+    seed: 8848
+    epochs: 200
+    lr: 1e-5
+    val_freq: 100
+    logs: logs/ae_9.5
+    batch_size: 512
+  
+  predict_mode: resample
+  embedded_data: [train.h5ad, val.h5ad]

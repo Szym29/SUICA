@@ -1,0 +1,13 @@
+case: 16.5
+
+dataset:
+  type: ST2D
+  data_file: data/datasets/data_SUICA/ST2D/${case}.h5ad
+  val_proportion: 0.2
+  keep_ratio: True
+
+pipeline:
+  optimization:
+    seed: 8848
+  
+  interp_method: nearest

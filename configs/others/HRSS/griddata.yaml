@@ -1,0 +1,11 @@
+dataset:
+  type: HRSS
+  data_file: /data/datasets/HRSS/Cuprite.npz
+  val_proportion: 0.2
+  val_file: 
+
+pipeline:
+  optimization:
+    seed: 8848
+  
+  interp_method: nearest
