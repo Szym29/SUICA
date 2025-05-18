@@ -1,4 +1,4 @@
-case: 11.5
+case: 9.5
 
 dataset:
   type: ST2D
@@ -24,9 +24,12 @@ pipeline:
     seed: 8848
     epochs: 2000
     lr: 1e-4
-    val_freq: 100
+    val_freq: 2000
     logs: logs/GAE+FFN/${case}
     batch_size: 8192
   
+  prediction:
+    ckpt: logs/GAE+FFN/${case}/lightning_logs/version_0/checkpoints/last.ckpt
+
   predict_mode: val
-  reconstructed_data: reconstructed-val.h5ad
+  reconstructed_data: predicted_reconstructed-val.h5ad

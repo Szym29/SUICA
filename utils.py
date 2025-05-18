@@ -98,16 +98,16 @@ def _spectral_angle_mapper(y_true, y_pred, mask=False):
 
 def _spearman_r(y_true, y_pred, mask=False):
     if mask:
-        corrs = np.array([spearmanr(y_true[i][y_true[i]>0], y_pred[i][y_true[i]>0]).statistic for i in range(y_pred.shape[0])])
+        corrs = np.array([np.nan_to_num(spearmanr(y_true[i][y_true[i]>0], y_pred[i][y_true[i]>0]).statistic) for i in range(y_pred.shape[0])])
     else:
-        corrs = np.array([spearmanr(y_true[i], y_pred[i]).statistic for i in range(y_pred.shape[0])])
+        corrs = np.array([np.nan_to_num(spearmanr(y_true[i], y_pred[i]).statistic) for i in range(y_pred.shape[0])])
     return corrs.mean()
 
 def _pearson_r(y_true, y_pred, mask=False):
     if mask:
-        corrs = np.array([pearsonr(y_true[i][y_true[i]>0], y_pred[i][y_true[i]>0]).statistic for i in range(y_pred.shape[0])])
+        corrs = np.array([np.nan_to_num(pearsonr(y_true[i][y_true[i]>0], y_pred[i][y_true[i]>0]).statistic) for i in range(y_pred.shape[0])])
     else:
-        corrs = np.array([pearsonr(y_true[i], y_pred[i]).statistic for i in range(y_pred.shape[0])])
+        corrs = np.array([np.nan_to_num(pearsonr(y_true[i], y_pred[i]).statistic) for i in range(y_pred.shape[0])])
     return corrs.mean()
 
 # Intersection over Union of zero-map
@@ -146,7 +146,7 @@ def metrics(y_true, y_pred, prefix="val", fast=False):
         f"{prefix}/cosine_similarity": _cosine_similarity(y_true, y_pred),
         f"{prefix}/cosine_similarity_mask": _cosine_similarity(y_true, y_pred, mask=True),
         f"{prefix}/sam": _spectral_angle_mapper(y_true, y_pred),
-        f"{prefix}/sam_mask": _spectral_angle_mapper(y_true, y_pred, mask=True),
+        # f"{prefix}/sam_mask": _spectral_angle_mapper(y_true, y_pred, mask=True),
         f"{prefix}/iou": _IoU(y_true, y_pred),
     }
     if not fast:

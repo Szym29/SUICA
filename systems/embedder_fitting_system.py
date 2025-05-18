@@ -9,8 +9,8 @@ import os
 import numpy as np
 from omegaconf import ListConfig
 import importlib
-
-from datasets import ST2D, GraphST2D,GraphST3D
+import gc
+from datasets import ST2D, GraphST2D
 from networks import AE, GAE
 from utils import metrics, plot_ST, construct_subgraph
 
@@ -71,18 +71,19 @@ class EmbedderFittingSystem(L.LightningModule):
     
     def training_step(self, batch, batch_idx):
         if self.GNN:
-            idx, semantic_neighbors = batch["idx"],batch["semantic_neighbors"]
+            idx, neighbors = batch["idx"],batch["neighbors"]
             extra_info = self.extra_variable
             adj = extra_info["adj_train"]
             raw_rep = extra_info["raw_rep_train"]
-            content_neighbours = list(semantic_neighbors.cpu().numpy().flatten())
-            neighbourhoods = list(set(content_neighbours))
+            neighbours = list(neighbors.cpu().numpy().flatten())
+            neighbourhoods = list(set(neighbours))
             sub_set_y_raw, sub_set_adj,sub_set_idx = construct_subgraph(raw_rep, adj, neighbourhoods,idx.cpu().numpy())
             sub_set_y_raw = sub_set_y_raw.cuda()
             sub_set_adj = sub_set_adj.cuda()
             loss, _, _ = self.fitting_model.forward_loss(sub_set_y_raw,sub_set_adj,sub_set_idx)
             del adj
             del raw_rep
+            gc.collect()
         else:
             y_raw = batch["raw_representations"]
             loss, _, _ = self.fitting_model.forward_loss(y_raw)
@@ -92,12 +93,12 @@ class EmbedderFittingSystem(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.GNN:
-            y_raw, x,idx,semantic_neighbors = batch["raw_representations"], batch["coordinates"], batch["idx"],batch["semantic_neighbors"]
+            y_raw, x,idx,neighbors = batch["raw_representations"], batch["coordinates"], batch["idx"],batch["neighbors"]
             extra_info = self.extra_variable
             adj = extra_info["adj_val"]
             raw_rep = extra_info["raw_rep_val"]
-            content_neighbours = list(semantic_neighbors.cpu().numpy().flatten()) 
-            neighbourhoods = list(set(content_neighbours))
+            neighbours = list(neighbors.cpu().numpy().flatten()) 
+            neighbourhoods = list(set(neighbours))
             sub_set_y_raw, sub_set_adj,sub_set_idx = construct_subgraph(raw_rep, adj, neighbourhoods,idx.cpu().numpy())
             sub_set_y_raw = sub_set_y_raw.cuda()
             sub_set_adj = sub_set_adj.cuda()
@@ -135,13 +136,13 @@ class EmbedderFittingSystem(L.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         if self.GNN:
-            y_raw, x,semantic_neighbors,idx  = batch["raw_representations"], batch["coordinates"],batch["semantic_neighbors"], batch["idx"]
+            y_raw, x,neighbors,idx  = batch["raw_representations"], batch["coordinates"],batch["neighbors"], batch["idx"]
             extra_info = self.extra_variable
             adj = extra_info["adj"]
             raw_rep = extra_info["raw_rep"]
             
-            content_neighbours = list(semantic_neighbors.cpu().numpy().flatten()) 
-            neighbourhoods = list(set(content_neighbours))
+            neighbours = list(neighbors.cpu().numpy().flatten()) 
+            neighbourhoods = list(set(neighbours))
             sub_set_y_raw, sub_set_adj,sub_set_idx = construct_subgraph(raw_rep, adj, neighbourhoods,idx.cpu().numpy())
             sub_set_y_raw = sub_set_y_raw.cuda()
             sub_set_adj = sub_set_adj.cuda()
@@ -156,15 +157,18 @@ class EmbedderFittingSystem(L.LightningModule):
             "y_hat": y_hat.detach().cpu().numpy(),
             "embd": embd.detach().cpu().numpy()
         })
-
+        
     def on_predict_epoch_end(self):
+        from scipy.sparse import csr_matrix
         outputs = self.output_cache
         all_y_raw = np.concatenate([x["y_raw"] for x in outputs], axis=0)
+        all_y_raw = csr_matrix(all_y_raw)
         #all_y_hat = np.concatenate([x["y_hat"] for x in outputs], axis=0)
         all_x = np.concatenate([x["x"] for x in outputs], axis=0)
         all_embd = np.concatenate([x["embd"] for x in outputs], axis=0)
-        
-
+        del outputs
+        del self.output_cache
+        gc.collect()
         if isinstance(self.pipeline_configs.embedded_data, ListConfig):
             save_name = self.pipeline_configs.embedded_data.pop(0)
         else:
@@ -196,39 +200,37 @@ def train_embedder(configs):
         n_neighbors = configs.dataset.n_neighbors
         adata =  sc.read_h5ad(dataset_configs.data_file)
         
-        adj = kneighbors_graph(adata.X,n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
+        adj = kneighbors_graph(adata.obsm['spatial'],n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
         adj = adj.astype(np.float32)
         if dataset_configs.type == 'GraphST2D':
-            dataset = GraphST2D(h5ad_file=dataset_configs.data_file, semantic_adj_neighbors=adj.indices.reshape(-1,n_neighbors),  keep_ratio=dataset_configs.keep_ratio)
+            dataset = GraphST2D(h5ad_file=dataset_configs.data_file, neighbors=adj.indices.reshape(-1,n_neighbors),  keep_ratio=dataset_configs.keep_ratio)
         elif dataset_configs.type == 'GraphST3D':
-            dataset = GraphST3D(h5ad_file=dataset_configs.data_file, semantic_adj_neighbors=adj.indices.reshape(-1,n_neighbors), keep_ratio=dataset_configs.keep_ratio)
+            dataset = GraphST3D(h5ad_file=dataset_configs.data_file, neighbors=adj.indices.reshape(-1,n_neighbors), keep_ratio=dataset_configs.keep_ratio,require_coordnorm=dataset_configs.require_coordnorm)
         if issparse(adata.X):
             adata.X = adata.X.toarray()
         raw_rep = torch.tensor(adata.X)
         train_idx, val_idx = train_test_split(list(range(len(adata))), test_size=dataset_configs.val_proportion)
         adata_train = adata[train_idx]
         adata_val = adata[val_idx]
+        print(len(adata_train),len(adata_val))
         print(f"{val_idx[:10]=}") # check whether seed works
-        semantic_adj = kneighbors_graph(adata[train_idx].X,n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
-        semantic_adj_val = kneighbors_graph(adata[val_idx].X,n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
+        adj_train = kneighbors_graph(adata[train_idx].obsm['spatial'],n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
+        adj_val = kneighbors_graph(adata[val_idx].obsm['spatial'],n_neighbors,mode='connectivity',n_jobs=8,include_self=True)
         if dataset_configs.type == 'GraphST2D':
-            train_dataset = GraphST2D(h5ad_file=adata_train,semantic_adj_neighbors=semantic_adj.indices.reshape(-1,n_neighbors) ,keep_ratio=dataset_configs.keep_ratio)
-            val_dataset = GraphST2D(h5ad_file=adata_val,semantic_adj_neighbors=semantic_adj_val.indices.reshape(-1,n_neighbors) , keep_ratio=dataset_configs.keep_ratio)
+            train_dataset = GraphST2D(h5ad_file=adata_train,neighbors=adj_train.indices.reshape(-1,n_neighbors) ,keep_ratio=dataset_configs.keep_ratio)
+            val_dataset = GraphST2D(h5ad_file=adata_val,neighbors=adj_val.indices.reshape(-1,n_neighbors) , keep_ratio=dataset_configs.keep_ratio)
 
-        elif dataset_configs.type == 'GraphST3D':
-            train_dataset = GraphST3D(h5ad_file=adata_train,semantic_adj_neighbors=semantic_adj.indices.reshape(-1,n_neighbors) , keep_ratio=dataset_configs.keep_ratio)
-            val_dataset = GraphST3D(h5ad_file=adata_val,semantic_adj_neighbors=semantic_adj_val.indices.reshape(-1,n_neighbors) , keep_ratio=dataset_configs.keep_ratio)
         batch_size = pipeline_configs.optimization.batch_size
         raw_rep_train = torch.tensor(adata[train_idx].X)
         raw_rep_val = torch.tensor(adata[val_idx].X)
-        adj_train = semantic_adj.astype(np.float32)
-        adj_val = semantic_adj_val.astype(np.float32)
+        adj_train = adj_train.astype(np.float32)
+        adj_val = adj_val.astype(np.float32)
 
         extra_info = {"raw_rep":raw_rep,"adj": adj,"raw_rep_train": raw_rep_train, "adj_train":adj_train, "raw_rep_val":raw_rep_val, "adj_val":adj_val}
         pipeline_configs.embedder.dim_in = train_dataset.n_gene
         extra_callback = ExtraVariableCallback(extra_variable=extra_info)
-        train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=8, drop_last=False)
-        val_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)
+        train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=18, drop_last=False)
+        val_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, num_workers=18, drop_last=False)
 
     else:
         # dataset configuration
@@ -269,10 +271,23 @@ def train_embedder(configs):
                 devices=1
             )
     trainer.fit(fitting_system, train_dataloader, val_dataloader)
-
+    # del trainer
+    if dataset_configs.type == 'GraphST2D':
+        del adj_train
+        del adj
+        del raw_rep
+        del raw_rep_train
+    del train_dataset
+    del train_dataloader
+    del extra_callback
+    import gc
+    gc.collect()
     # predict
     if pipeline_configs.predict_mode=="all":
-        test_dataloader = DataLoader(dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)
+        del val_dataset
+        del val_dataloader
+        gc.collect()
+        test_dataloader = DataLoader(dataset, shuffle=False, batch_size=batch_size, num_workers=1, drop_last=False)
         trainer.predict(fitting_system, dataloaders=test_dataloader)
     elif pipeline_configs.predict_mode=="val":
         test_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)

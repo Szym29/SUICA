@@ -1,7 +1,7 @@
-case: L3
+case: 9.5
 
 dataset:
-  type: ST3D
+  type: ST2D
   data_file: logs/GAE/${case}/lightning_logs/version_0/embedded-all.h5ad
   val_proportion: 0.2
   keep_ratio: True
@@ -14,7 +14,7 @@ pipeline:
     model: FFN
     num_hidden_layers: 3
     num_hidden_features: 2048 
-    phase: 1000
+    phase: 1000 # number of epoches in the INR pretraining phase, after this phase the decoder will be trained.
     decoder:
       ckpt: logs/GAE/${case}/lightning_logs/version_0/checkpoints/last.ckpt
       recon_loss: True
@@ -24,7 +24,7 @@ pipeline:
     seed: 8848
     epochs: 2000
     lr: 1e-4
-    val_freq: 100
+    val_freq: 200
     logs: logs/GAE+FFN/${case}
     batch_size: 8192
   

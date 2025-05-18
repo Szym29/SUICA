@@ -1,8 +1,10 @@
+case: 9.5
+
 dataset:
-  type: HRSS
-  data_file: /data/datasets/HRSS/Cuprite.npz
+  type: ST2D
+  data_file: data/preprocessed_data/${case}.h5ad
   val_proportion: 0.2
-  val_file: 
+  keep_ratio: True
 
 pipeline:
   optimization:

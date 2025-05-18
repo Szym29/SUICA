@@ -2,9 +2,9 @@ from sklearn.neighbors import kneighbors_graph
 import numpy as np
 import scanpy as sc
 
-adata = sc.read("data/aligned_data/E11.5_E1S1.MOSTA.h5ad")
-
+adata = sc.read("data/preprocessed/E11.5_E1S1.MOSTA.h5ad")
 adata_embd = sc.read('data/embedded_data/E11.5_E1S1.MOSTA.h5ad')
+
 adata.obsm["embeddings"] = adata_embd.obsm["embeddings"]
 
 sc.pp.neighbors(adata, use_rep='embeddings', n_neighbors=25, metric='euclidean')

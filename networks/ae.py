@@ -78,14 +78,10 @@ class AE(nn.Module):
     
     def forward_loss(self, x):
         y, z = self.forward(x)
-        loss = F.mse_loss(y, x) + F.l1_loss(y, x)
+        loss = F.mse_loss(y, x)
         return loss, y, z
 
 if __name__ == "__main__":
-    # model = AE(dim_in=24898, dim_hidden=[128, 64], dim_latent=16).cuda()
-    # inputs = torch.ones([100, 24898]).cuda()
-    # reconstruction, embedding = model(inputs)
-    # print(reconstruction.shape, embedding.shape)
 
     model = AE(dim_in=24898, dim_hidden=1024, dim_latent=128).cuda()
     x = torch.ones([100, 24898]).cuda()

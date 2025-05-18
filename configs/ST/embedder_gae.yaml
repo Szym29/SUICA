@@ -1,8 +1,8 @@
-case: L3
+case: 9.5
 
 dataset:
-  type: GraphST3D
-  data_file: data/datasets/data_SUICA/ST3D/${case}.h5ad
+  type: GraphST2D
+  data_file: data/preprocessed_data/${case}.h5ad
   val_proportion: 0.2
   keep_ratio: True
   n_neighbors: 5
@@ -15,9 +15,9 @@ pipeline:
 
   optimization:
     seed: 8848
-    epochs: 20
+    epochs: 200
     lr: 1e-5
-    val_freq: 10
+    val_freq: 50
     logs: logs/GAE/${case}
     batch_size: 512
   

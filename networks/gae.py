@@ -103,9 +103,7 @@ class GAE(nn.Module):
     def forward_loss(self, x, adj, idx):
         y, z = self.forward(x, adj, idx)
         x = x[idx,:]
-        mse_loss = F.mse_loss(y[x != 0], x[x != 0])
-        loss = mse_loss.cpu() + F.l1_loss(y, x)
-
+        loss = F.mse_loss(y, x)
         return loss, y, z
 
 

@@ -56,7 +56,6 @@ class INRFittingSystem(L.LightningModule):
         
         self.val_pca = val_pca
         self.decoder = decoder
-
         self.output_cache = []
 
 
@@ -94,25 +93,20 @@ class INRFittingSystem(L.LightningModule):
         else:
             x, gt = batch["coordinates"], batch["raw_representations"]
         pred = self.fitting_model(x)
-        if self.pipeline_configs.inr.phase is not None:
-            if self.current_epoch <= self.pipeline_configs.inr.phase:
-                fitting_loss = self.fitting_loss(pred, gt)
-            else:
-                fitting_loss = torch.tensor(0.0, device=self.device)
-                for param in self.fitting_model.parameters():
-                    param.requires_grad = False
-        else:
+        if self.current_epoch <= self.pipeline_configs.inr.phase:
             fitting_loss = self.fitting_loss(pred, gt)
+        else:
+            fitting_loss = torch.tensor(0.0, device=self.device)
+            for param in self.fitting_model.parameters():
+                param.requires_grad = False
         self.log("train/fitting_loss", fitting_loss, sync_dist=True, rank_zero_only=True, on_step=False, on_epoch=True)
         loss = fitting_loss
         if self.decoder and self.pipeline_configs.inr.decoder.recon_loss:
-            if self.pipeline_configs.inr.phase is not None:
-                if self.current_epoch > self.pipeline_configs.inr.phase:
-                    recons = self.decoder(pred)
-                    recons_loss = self.recons_loss(recons, batch["raw_representations"])
-                    self.log("train/recons_loss", recons_loss, sync_dist=True, rank_zero_only=True, on_step=False, on_epoch=True)
-                    loss += recons_loss
-
+            if self.current_epoch > self.pipeline_configs.inr.phase: #fine tune the decoder after epoch = phase
+                recons = self.decoder(pred)
+                recons_loss = self.recons_loss(recons, batch["raw_representations"])
+                self.log("train/recons_loss", recons_loss, sync_dist=True, rank_zero_only=True, on_step=False, on_epoch=True)
+                loss += recons_loss
         self.log("train/loss", loss, sync_dist=True, rank_zero_only=True, on_step=False, on_epoch=True)
         return loss
     
@@ -157,17 +151,12 @@ class INRFittingSystem(L.LightningModule):
         if self.decoder:
             all_raw = np.concatenate([x["raw"] for x in outputs], axis=0)
             all_recons = np.concatenate([x["recons"] for x in outputs], axis=0)
-            scores_recon = metrics(all_raw, all_recons, prefix="val_recon", fast=False)
+            scores_recon = metrics(all_raw, all_recons, prefix="val_recon",fast=False)
             self.log_dict(scores_recon, sync_dist=False)
-            # Save self.decoder
-            decoder_path = os.path.join(self.logger.log_dir, "decoder.pth")
-            torch.save(self.decoder.state_dict(), decoder_path)
-            print(f"Decoder saved to {decoder_path}")
-            
             print(scores_recon)
         # fig = plot_ST(all_x, self.val_pca.transform(all_pred))
         # self.logger.experiment.add_figure("val/pred", fig, self.current_epoch)
-        
+
         self.output_cache.clear()
 
     def configure_optimizers(self):
@@ -183,8 +172,8 @@ class INRFittingSystem(L.LightningModule):
         pred = self.fitting_model(x)
         step_output = {}
         if self.pipeline_configs.target == "embeddings":
-            embd = batch["embeddings"] 
-            step_output["embd"] = embd.detach().cpu().numpy()
+            # embd = batch["embeddings"] 
+            # step_output["embd"] = embd.detach().cpu().numpy()
             if self.decoder:
                 recons = self.decoder(pred)
                 step_output["recons"] = recons.detach().cpu().numpy()
@@ -199,8 +188,9 @@ class INRFittingSystem(L.LightningModule):
         all_raw = np.concatenate([x["raw"] for x in outputs], axis=0)
         all_pred = np.concatenate([x["pred"] for x in outputs], axis=0)
         all_x = np.concatenate([x["x"] for x in outputs], axis=0)
-
-        adata = ad.AnnData(X=all_raw)
+        from scipy.sparse import csr_matrix
+        adata = ad.AnnData(X=csr_matrix(all_raw))
+        all_pred = csr_matrix(all_pred)
         adata.obsm["spatial"] = all_x
         if self.pipeline_configs.target == "raw_representations":
             adata.obsm["fitted_raw"] = all_pred
@@ -209,8 +199,8 @@ class INRFittingSystem(L.LightningModule):
             if self.decoder:
                 all_recons = np.concatenate([x["recons"] for x in outputs], axis=0)
                 adata.obsm["reconstructed_raw"] = all_recons
-            all_embd = np.concatenate([x["embd"] for x in outputs], axis=0)
-            adata.obsm["embeddings"] = all_embd
+            # all_embd = np.concatenate([x["embd"] for x in outputs], axis=0)
+            # adata.obsm["embeddings"] = all_embd
             adata.obsm["fitted_embd"] = all_pred
         
         write_file = os.path.join(self.logger.log_dir, self.pipeline_configs.reconstructed_data)
@@ -218,7 +208,7 @@ class INRFittingSystem(L.LightningModule):
         adata.write_h5ad(write_file)
         
 
-def train_inr(configs):
+def predict_inr(configs):
     dataset_configs = configs.dataset
     pipeline_configs = configs.pipeline
 
@@ -234,7 +224,7 @@ def train_inr(configs):
         
     if pipeline_configs.target == "embeddings":
         pipeline_configs.inr.dim_out = dataset.get_embd_dim()
-        # val_pca = dataset.embd_pca
+        val_pca = None# dataset.embd_pca
     elif pipeline_configs.target == "raw_representations":
         pipeline_configs.inr.dim_out = dataset.get_raw_dim()
         # val_pca = dataset.raw_pca
@@ -243,15 +233,14 @@ def train_inr(configs):
     print(f"Fitting ST [italic red]{pipeline_configs.target}[/italic red] with INR ...")
 
     train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=dataset_configs.val_proportion)
-    print(len(train_idx), len(val_idx))
-
+    # import numpy as np
     print(f"{val_idx[:10]=}") # check whether seed works
     train_dataset, val_dataset = Subset(dataset, train_idx), Subset(dataset, val_idx)
 
     batch_size = pipeline_configs.optimization.batch_size
     train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size, num_workers=8, drop_last=False)
     val_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)
-    num_batches_in_epoch = len(train_dataloader)
+    num_batches_in_epoch = len(train_dataset)
 
     # pipeline configuration
     if pipeline_configs.inr.decoder:
@@ -262,12 +251,12 @@ def train_inr(configs):
         pipeline_configs.inr.decoder = {"recon_loss": False, "finetune": False}
         print("[yellow]with no decoder[/yellow]")
 
-    fitting_system = INRFittingSystem(pipeline_configs, val_pca=None, decoder=decoder)
+
     tb_logger = pl.loggers.TensorBoardLogger(pipeline_configs.optimization.logs)
     
     checkpoint_callback = pl.callbacks.ModelCheckpoint(filename="{epoch}", save_last=True)
     trainer = L.Trainer(
-                #num_sanity_val_steps=0,
+                num_sanity_val_steps=0,
                 accumulate_grad_batches=num_batches_in_epoch,
                 max_epochs=pipeline_configs.optimization.epochs,
                 check_val_every_n_epoch=pipeline_configs.optimization.val_freq,
@@ -276,23 +265,17 @@ def train_inr(configs):
                 callbacks=[checkpoint_callback],
                 devices=1
             )
-    trainer.fit(fitting_system, train_dataloader, val_dataloader)
+    # Load the trained model
+    fitting_system = INRFittingSystem.load_from_checkpoint(pipeline_configs.prediction.ckpt, pipeline_configs=pipeline_configs,decoder=decoder)
     
-    del train_dataset
-    del train_dataloader
-    import gc
-    gc.collect()
+    fitting_system.pipeline_configs =pipeline_configs
+    fitting_system.eval()
     # predict
     if pipeline_configs.predict_mode=="all":
-        del val_dataset
-        del val_dataloader
-        gc.collect()
         test_dataloader = DataLoader(dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)
         trainer.predict(fitting_system, test_dataloader)        
     elif pipeline_configs.predict_mode=="val":
-        del dataset
-        gc.collect()
         test_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=batch_size, num_workers=8, drop_last=False)
-        trainer.predict(fitting_system, test_dataloader) 
+        trainer.validate(fitting_system, test_dataloader) 
     else:
         print("End without writing predictions.")

@@ -4,7 +4,6 @@ from lightning import pytorch as pl
 from torch.utils.data import DataLoader, Subset
 from sklearn.model_selection import train_test_split
 import anndata as ad
-from sklearn.decomposition import PCA
 import importlib
 
 
@@ -22,7 +21,7 @@ def fit_griddata(configs):
     dataset = dataset_class(**dataset_configs)
     
     # split from data_file
-    if dataset_configs.type in ["ST2D", "ST3D"]:
+    if dataset_configs.type == "ST2D":
         train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=dataset_configs.val_proportion)
         print(f"{val_idx[:10]=}") # check whether seed works
     else:
@@ -48,43 +47,3 @@ def fit_griddata(configs):
     adata.obsm["spatial"] = coords_val
     adata.obsm["reconstructed_raw"] = pred_val
     adata.write_h5ad("grid-val.h5ad")
-
-
-    
-
-
-# fit PCA with train + evaluate with val
-def fit_pca(configs):
-    dataset_configs = configs.dataset
-    pipeline_configs = configs.pipeline
-    pl.seed_everything(pipeline_configs.optimization.seed, workers=True) # fix seed globally
-
-    # dataset configuration
-    dataset_class = getattr(importlib.import_module("datasets"), dataset_configs.type)
-    dataset = dataset_class(**dataset_configs)
-    train_idx, val_idx = train_test_split(list(range(len(dataset))), test_size=dataset_configs.val_proportion)
-    print(f"{val_idx[:10]=}") # check whether seed works
-
-    train_dataset, val_dataset = Subset(dataset, train_idx), Subset(dataset, val_idx)
-    train_dataloader = DataLoader(train_dataset, shuffle=False, batch_size=len(train_dataset), num_workers=8, drop_last=False)
-    val_dataloader = DataLoader(val_dataset, shuffle=False, batch_size=len(val_dataset), num_workers=8, drop_last=False)
-        
-    for sample_train in train_dataloader:
-        raw_train = sample_train["raw_representations"].numpy()
-    for sample_val in val_dataloader:
-        coords_val, raw_val = sample_val["coordinates"].numpy(), sample_val["raw_representations"].numpy()
-
-    pca = PCA(n_components=pipeline_configs.num_component, random_state=0)
-    pca.fit(raw_train)
-
-    transformed_raw = pca.transform(raw_val)
-    restored_raw = pca.inverse_transform(transformed_raw)
-    
-    print(f"[bold red]PCA+iPCA (num_component={pipeline_configs.num_component}):[/bold red]")
-    scores = metrics(raw_val, restored_raw, "pca")
-    print(scores)
-
-    adata = ad.AnnData(X=raw_val)
-    adata.obsm["spatial"] = coords_val
-    adata.obsm["reconstructed_raw"] = restored_raw
-    adata.write_h5ad("pca-val.h5ad")

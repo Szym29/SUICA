@@ -1,15 +1,14 @@
-case: 11.5
+case: 9.5
 
 dataset:
-  type: GraphST2D
-  data_file: data/datasets/data_SUICA/ST2D/${case}.h5ad
+  type: ST2D
+  data_file: data/preprocessed_data/${case}.h5ad
   val_proportion: 0.2
   keep_ratio: True
-  n_neighbors: 5
 
 pipeline:
   embedder:
-    model: GAE
+    model: AE
     dim_hidden: [2048, 512, 64]
     dim_latent: 32
 
@@ -17,8 +16,8 @@ pipeline:
     seed: 8848
     epochs: 200
     lr: 1e-5
-    val_freq: 100
-    logs: logs/GAE/${case}
+    val_freq: 50
+    logs: logs/AE/${case}
     batch_size: 512
   
   predict_mode: all

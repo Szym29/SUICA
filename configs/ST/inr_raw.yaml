@@ -1,8 +1,8 @@
-case: L3
+case: 9.5
 
 dataset:
-  type: ST3D
-  data_file: data/datasets/data_SUICA/ST3D/${case}.h5ad
+  type: ST2D
+  data_file: data/preprocessed_data/${case}.h5ad
   val_proportion: 0.2
   keep_ratio: True
 
@@ -10,9 +10,10 @@ pipeline:
   target: raw_representations
 
   inr:
-    model: SIREN
+    model: FFN
     num_hidden_layers: 12
     num_hidden_features: 2048 
+    phase: #None if using vanilla INR
     decoder: # will be automatically updated
 
   optimization:
@@ -20,8 +21,8 @@ pipeline:
     epochs: 2000
     lr: 1e-5
     val_freq: 200
-    logs: logs/SIREN/${case}
+    logs: logs/FFN/${case}
     batch_size: 8192
 
-  predict_mode: val
+  predict_mode: val 
   reconstructed_data: reconstructed-val.h5ad

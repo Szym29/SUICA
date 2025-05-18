@@ -155,8 +155,8 @@ class ST3D(Dataset):
         if require_coordnorm:
             self._normalize_coordinates(keep_ratio=keep_ratio)
 
-        self.raw_pca = PCA(n_components=3, random_state=0) # map raw representation dimension to 3 for visualization
-        self.raw_pca.fit(self.raw_representations)
+        # self.raw_pca = PCA(n_components=3, random_state=0) # map raw representation dimension to 3 for visualization
+        # self.raw_pca.fit(self.raw_representations)
 
         if self.has_embeddings():
             self.embd_pca = PCA(n_components=3, random_state=0) # map embedding dimension to 3 for visualization
@@ -339,7 +339,7 @@ class HRSS(Dataset):
             }
 
 class GraphST2D(Dataset):
-    def __init__(self, h5ad_file,semantic_adj_neighbors,keep_ratio=True, **kwargs):
+    def __init__(self, h5ad_file,neighbors,keep_ratio=True, **kwargs):
         super().__init__()
         #if h5ad_file is not str, adata = h5ad_file
         if type(h5ad_file) == str:
@@ -350,10 +350,7 @@ class GraphST2D(Dataset):
         self.sb = True
         
         self.coordinates = adata.obsm["spatial"]
-        # self.spatial_adj = kneighbors_graph(adata.obsm["spatial"],9,mode='connectivity',n_jobs=8)
-        # self.spatial_adj_neighbors = spatial_adj_neighbors#kneighbors_graph(adata.obsm["spatial"],9,mode='connectivity',n_jobs=8).indices.reshape(-1,9)
-        # self.semantic_adj = kneighbors_graph(adata.X,9,mode='connectivity',n_jobs=8)
-        self.semantic_adj_neighbors = semantic_adj_neighbors#kneighbors_graph(adata.X,9,mode='connectivity',n_jobs=8).indices.reshape(-1,9)
+        self.neighbors = neighbors
         if sp.issparse(adata.X):
             self.raw_representations = adata.X.toarray()
         else:
@@ -442,143 +439,20 @@ class GraphST2D(Dataset):
                 "coordinates": torch.Tensor(self.coordinates[idx,:].copy()).float(),
                 "embeddings": torch.Tensor(self.embeddings[idx,:].copy()).float(),
                 "raw_representations": torch.Tensor(self.raw_representations[idx,:].copy()).float(),
-                "semantic_neighbors": self.semantic_adj_neighbors[idx]
+                "neighbors": self.neighbors[idx]
             }
         else:
             return {
                 "idx": idx,
                 "coordinates": torch.Tensor(self.coordinates[idx,:].copy()).float(),
                 "raw_representations": torch.Tensor(self.raw_representations[idx,:].copy()).float(),
-                "semantic_neighbors": self.semantic_adj_neighbors[idx]
+                "neighbors": self.neighbors[idx]
             }
 
-
-class GraphST3D(Dataset):
-    def __init__(self, h5ad_file,semantic_adj_neighbors,keep_ratio=True, **kwargs):
-        super().__init__()
-        #if h5ad_file is not str, adata = h5ad_file
-        if type(h5ad_file) == str:
-
-            adata = read_anndata(h5ad_file)
-        else:
-            adata = h5ad_file
-        self.sb = True
-        self.coordinates = adata.obsm["spatial"]
-        # self.spatial_adj = kneighbors_graph(adata.obsm["spatial"],9,mode='connectivity',n_jobs=8)
-        # self.spatial_adj_neighbors = spatial_adj_neighbors#kneighbors_graph(adata.obsm["spatial"],9,mode='connectivity',n_jobs=8).indices.reshape(-1,9)
-        # self.semantic_adj = kneighbors_graph(adata.X,9,mode='connectivity',n_jobs=8)
-        self.semantic_adj_neighbors = semantic_adj_neighbors#kneighbors_graph(adata.X,9,mode='connectivity',n_jobs=8).indices.reshape(-1,9)
-        if sp.issparse(adata.X):
-            self.raw_representations = adata.X.toarray()
-        else:
-            self.raw_representations = adata.X
-        
-        # take statistics
-        self.n_cell = self.raw_representations.shape[0]
-        self.n_gene = self.raw_representations.shape[1]
-        
-        if "embeddings" in adata.obsm:
-            self.embeddings = adata.obsm["embeddings"]
-            assert self.raw_representations.shape[0] == self.embeddings.shape[0]
-            self.n_embd = self.embeddings.shape[1]
-        else: 
-            self.embeddings = None
-
-        self._normalize_coordinates(keep_ratio=keep_ratio)
-
-        self.raw_pca = PCA(n_components=3, random_state=0) # map raw representation dimension to 3 for visualization
-        self.raw_pca.fit(self.raw_representations)
-
-        if self.has_embeddings():
-            self.embd_pca = PCA(n_components=3, random_state=0) # map embedding dimension to 3 for visualization
-            self.embd_pca.fit(self.embeddings)
-        
-    
-    def has_embeddings(self):
-        return False if self.embeddings is None else True
-
-    def plot_raw_representations(self, spot_size=2, train_indices=None, val_indices=None):
-        if train_indices and val_indices:
-            train_fig = plot_ST(self.coordinates[train_indices,:], self.raw_pca.transform(self.raw_representations[train_indices,:]), spot_size)
-            val_fig = plot_ST(self.coordinates[val_indices,:], self.raw_pca.transform(self.raw_representations[val_indices,:]), spot_size)
-            return train_fig, val_fig
-        else:
-            fig = plot_ST(self.coordinates, self.raw_pca.transform(self.raw_representations), spot_size)
-        return fig
-    
-    def plot_embeddings(self, spot_size=2, train_indices=None, val_indices=None):
-        assert self.has_embeddings(), "The current adata file has NO embeddings!"
-        if train_indices and val_indices:
-            train_fig = plot_ST(self.coordinates[train_indices,:], self.embd_pca.transform(self.embeddings[train_indices,:]), spot_size)
-            val_fig = plot_ST(self.coordinates[val_indices,:], self.embd_pca.transform(self.embeddings[val_indices,:]), spot_size)
-            return train_fig, val_fig
-        else:
-            fig = plot_ST(self.coordinates, self.embd_pca.transform(self.embeddings), spot_size)
-            return fig
-    
-
-    # normalize coordinates to [-1.0, +1.0]
-    def _normalize_coordinates(self, keep_ratio):
-        x_min, y_min, z_min = list(self.coordinates.min(axis=0))
-        x_max, y_max, z_max = list(self.coordinates.max(axis=0))
-        x_range, y_range, z_range = x_max - x_min, y_max - y_min, z_max - z_min
-
-        self.coordinates[:,0] = (self.coordinates[:,0] - x_min) / x_range
-        self.coordinates[:,1] = (self.coordinates[:,1] - y_min) / y_range
-        self.coordinates[:,2] = (self.coordinates[:,2] - z_min) / z_range
-
-        self.coordinates -= 0.5
-        self.coordinates *= 2.0
-
-        if keep_ratio: # may cause waste of space in the short side
-            max_range = max(x_range, y_range, z_range)
-            scale_x, scale_y, scale_z = x_range / max_range, y_range / max_range, z_range / max_range
-            self.coordinates[:,0] *= scale_x
-            self.coordinates[:,1] *= scale_y
-            self.coordinates[:,2] *= scale_z
-    
-    def __len__(self):
-        return self.n_cell
-    
-    def get_raw_dim(self):
-        return self.n_gene
-    
-    def get_embd_dim(self):
-        if self.has_embeddings():
-            return self.n_embd
-        else:
-            return None
-
-    def __len__(self):
-        return self.n_cell
-    
-    def __getitem__(self, idx):
-        if self.has_embeddings():
-            return {
-                "idx": idx,
-                "coordinates": torch.Tensor(self.coordinates[idx,:].copy()).float(),
-                "embeddings": torch.Tensor(self.embeddings[idx,:].copy()).float(),
-                "raw_representations": torch.Tensor(self.raw_representations[idx,:].copy()).float(),
-                
-                "semantic_neighbors": self.semantic_adj_neighbors[idx]
-            }
-        else:
-            return {
-                "idx": idx,
-                "coordinates": torch.Tensor(self.coordinates[idx,:].copy()).float(),
-                "raw_representations": torch.Tensor(self.raw_representations[idx,:].copy()).float(),
-                
-                "semantic_neighbors": self.semantic_adj_neighbors[idx]
-            }
 
 if __name__ == "__main__":
-    ds = ST3D("/data/datasets/Flysta3D/L1_a_count_normal_stereoseq.h5ad", True, True)
-    raw = ds.raw_representations
-    print(raw.max(), raw.min())
-    sparsity = (raw==0).sum() / (raw>=0).sum()
-    print(sparsity)
 
-    ds = ST2D("./data/preprocessed_data/E11.5_E1S1.MOSTA.h5ad", True, True)
+    ds = ST2D("./data/preprocessed_data/E11.5.h5ad", True, True)
     raw = ds.raw_representations
     print(raw.max(), raw.min())
     sparsity = (raw==0).sum() / (raw>=0).sum()

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from utils import plot_ST
 
 adata_ae = sc.read("./logs/AE/16.5/lightning_logs/version_0/embedded-all.h5ad")
-adata_gae = sc.read("/data/datasets/data_SUICA/E16.5_all_GAEFFN.h5ad")
+adata_gae = sc.read("./logs/GAE/16.5/lightning_logs/version_0/embedded-all.h5ad")
 
 from scipy.stats import entropy
 
