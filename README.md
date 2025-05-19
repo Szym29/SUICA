@@ -11,13 +11,8 @@
 
 ## Environment
 
-The configuration of running environment involves CUDA compiling, so please make sure NVCC has been installed (``nvcc -V`` to check the version) and the installed PyTorch is compiled with the same CUDA version.
-
-For example, if the system's CUDA is 11.8, run the following commands to configure the environment:
-
 ```shell
 conda create -n SUICA python=3.9 -y && conda activate SUICA
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements.txt
 ```
 ## To Run Your Data
