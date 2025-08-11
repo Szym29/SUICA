@@ -40,12 +40,12 @@ The typical data structure is as follows:
 
 **Train the Graph AutoEncoder (GAE)**
 ```
-python train.py --mode --embedder --conf ./configs/ST/embedder_gae.yaml
+python train.py --mode embedder --conf ./configs/ST/embedder_gae.yaml
 ```
 
 **Train the GAE-INR**
 ```
-python train.py --mode --inr --conf ./configs/ST/inr_embd.yaml
+python train.py --mode inr --conf ./configs/ST/inr_embd.yaml
 ```
 
 ## Citation
