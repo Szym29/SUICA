@@ -14,9 +14,10 @@ class GaussianEncoding(nn.Module):
         self._num_input_channels = num_input_channels
         self._mapping_size = mapping_size
         self._B = torch.randn((num_input_channels, mapping_size)) * scale
+        self.register_buffer('B', self._B)
 
     def forward(self, x):
-        x = x @ self._B.to(x.device)
+        x = x @ self.B.to(x.device)
 
         x = 2 * np.pi * x
         return torch.cat([torch.sin(x), torch.cos(x)], dim=1)
